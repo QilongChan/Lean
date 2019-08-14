@@ -62,79 +62,76 @@ namespace QuantConnect.Algorithm.CSharp
             var order = Transactions.GetOrderById(orderEvent.OrderId);
             Debug($"{Time}: {order.Type}: {orderEvent}");
         }
-    }
-}
-
-namespace QuantConnect.Algorithm.Framework.Alphas
-{
-    /// <summary>
-    /// Alpha model that uses the Interest rate released by Fed to create insights.
-    /// When Forecast Interest Rate is larger than Previous Interest Rate, we assume USD value goes up.
-    /// </summary>
-    public class InterestReleaseAlphaModel : AlphaModel
-    {
-        private TimeSpan _predictionInterval;
-        private IEnumerable<Symbol> _pairs;
-        private Symbol _calendar;
 
         /// <summary>
-        /// Initializes a new instance of the InterestReleaseAlphaModel class
+        /// Alpha model that uses the Interest rate released by Fed to create insights.
+        /// When Forecast Interest Rate is larger than Previous Interest Rate, we assume USD value goes up.
         /// </summary>
-        /// <param name="algorithm">The algorithm instance</param>
-        /// <param name="period">The prediction interval period</param>
-        /// <param name="resolution">The resolution of data</param>
-        public InterestReleaseAlphaModel(QCAlgorithm algorithm, int period = 30, Resolution resolution = Resolution.Daily)
+        private class InterestReleaseAlphaModel : AlphaModel
         {
-            _predictionInterval = Time.Multiply(Extensions.ToTimeSpan(resolution), period);
-            _calendar = algorithm.AddData<TradingEconomicsCalendar>(TradingEconomics.Calendar.UnitedStates.InterestRate).Symbol;
+            private TimeSpan _predictionInterval;
+            private IEnumerable<Symbol> _pairs;
+            private Symbol _calendar;
 
-            Name = $"{nameof(InterestReleaseAlphaModel)}({period}, {resolution})";
-        }
-
-        /// <summary>
-        /// Updates this alpha model with the latest data from the algorithm.
-        /// </summary>
-        /// <param name="algorithm">The algorithm instance</param>
-        /// <param name="data">The new data available</param>
-        /// <returns>The new insights generated</returns>
-        public override IEnumerable<Insight> Update(QCAlgorithm algorithm, Slice data)
-        {
-            if (!data.ContainsKey(_calendar))
+            /// <summary>
+            /// Initializes a new instance of the InterestReleaseAlphaModel class
+            /// </summary>
+            /// <param name="algorithm">The algorithm instance</param>
+            /// <param name="period">The prediction interval period</param>
+            /// <param name="resolution">The resolution of data</param>
+            public InterestReleaseAlphaModel(QCAlgorithm algorithm, int period = 30, Resolution resolution = Resolution.Daily)
             {
-                return Enumerable.Empty<Insight>();
+                _predictionInterval = QuantConnect.Time.Multiply(Extensions.ToTimeSpan(resolution), period);
+                _calendar = algorithm.AddData<TradingEconomicsCalendar>(TradingEconomics.Calendar.UnitedStates.InterestRate).Symbol;
+
+                Name = $"{nameof(InterestReleaseAlphaModel)}({period}, {resolution})";
             }
 
-            var insights = new List<Insight>();
-
-            // Forecast Interest Rate
-            var foreIR = System.Convert.ToDecimal(data[_calendar].Forecast.Replace("%", ""), CultureInfo.InvariantCulture);
-            // Previous released actual Interest Rate
-            var prevIR = System.Convert.ToDecimal(data[_calendar].Previous.Replace("%", ""), CultureInfo.InvariantCulture);
-            // Judge whether USD value goes up
-            var usdValueUp = foreIR >= prevIR;
-
-            foreach (var pair in _pairs)
+            /// <summary>
+            /// Updates this alpha model with the latest data from the algorithm.
+            /// </summary>
+            /// <param name="algorithm">The algorithm instance</param>
+            /// <param name="data">The new data available</param>
+            /// <returns>The new insights generated</returns>
+            public override IEnumerable<Insight> Update(QCAlgorithm algorithm, Slice data)
             {
-                // when USD value goes up, the value of XXXUSD pairs would go down and USDXXX would go up
-                var direction = pair.Value.StartsWith("USD") && usdValueUp ||
-                                pair.Value.EndsWith("USD") && !usdValueUp
-                    ? InsightDirection.Up
-                    : InsightDirection.Down;
+                if (!data.ContainsKey(_calendar))
+                {
+                    return Enumerable.Empty<Insight>();
+                }
 
-                insights.Add(Insight.Price(pair, _predictionInterval, direction));
+                var insights = new List<Insight>();
+
+                // Forecast Interest Rate
+                var foreIR = System.Convert.ToDecimal(data[_calendar].Forecast.Replace("%", ""), CultureInfo.InvariantCulture);
+                // Previous released actual Interest Rate
+                var prevIR = System.Convert.ToDecimal(data[_calendar].Previous.Replace("%", ""), CultureInfo.InvariantCulture);
+                // Judge whether USD value goes up
+                var usdValueUp = foreIR >= prevIR;
+
+                foreach (var pair in _pairs)
+                {
+                    // when USD value goes up, the value of XXXUSD pairs would go down and USDXXX would go up
+                    var direction = pair.Value.StartsWith("USD") && usdValueUp ||
+                                    pair.Value.EndsWith("USD") && !usdValueUp
+                        ? InsightDirection.Up
+                        : InsightDirection.Down;
+
+                    insights.Add(Insight.Price(pair, _predictionInterval, direction));
+                }
+
+                return insights;
             }
 
-            return insights;
-        }
-
-        /// <summary>
-        /// Event fired each time the we add/remove securities from the data feed.
-        /// </summary>
-        /// <param name="algorithm">The algorithm instance that experienced the change in securities</param>
-        /// <param name="changes">The security additions and removals from the algorithm</param>
-        public override void OnSecuritiesChanged(QCAlgorithm algorithm, SecurityChanges changes)
-        {
-            _pairs = changes.AddedSecurities.Select(x => x.Symbol);
+            /// <summary>
+            /// Event fired each time the we add/remove securities from the data feed.
+            /// </summary>
+            /// <param name="algorithm">The algorithm instance that experienced the change in securities</param>
+            /// <param name="changes">The security additions and removals from the algorithm</param>
+            public override void OnSecuritiesChanged(QCAlgorithm algorithm, SecurityChanges changes)
+            {
+                _pairs = changes.AddedSecurities.Select(x => x.Symbol);
+            }
         }
     }
 }
